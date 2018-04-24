@@ -172,10 +172,11 @@ private:
 
     void handleClient(Client client)
     {
-        parseHandshake(client);
+        auto accept = parseHandshake(client);
+        onMessage(cast(ubyte[])accept);
     }
 
-    void parseHandshake(Client client)
+    string parseHandshake(Client client)
     {
         string[string] headers;
         string requestMethod;
@@ -199,7 +200,38 @@ private:
             Fiber.yield();
         }
 
-        onMessage(cast(ubyte[])headers["host"]);
+        if(websocketRequested(headers))
+        {
+            if(auto k = Headers.Sec_WebSocket_Key in headers)
+            {
+                string key = *k ~ "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+                import std.digest.sha, std.base64;
+
+                return  Base64.encode(sha1Of(key));
+            }
+        }
+
+        return null;
+    }
+
+    bool websocketRequested(string[string] headers)
+    {
+        if(auto c = Headers.Connection in headers)
+        if(auto u = Headers.Upgrade in headers)
+            return *c == HeaderFields.Upgrade && *u == HeaderFields.WebSocket;
+
+        return false;
+    }
+
+    enum Headers : string {
+        Sec_WebSocket_Key = "sec-websocket-key",
+        Connection = "connection",
+        Upgrade = "upgrade",
+    }
+
+    enum HeaderFields : string {
+        Upgrade = "Upgrade",
+        WebSocket = "websocket"
     }
 
     TcpSocket listener;
@@ -234,7 +266,7 @@ unittest {
         bool running = true;
         sv.onMessage = (ubyte[] m)
         {
-            if(m == cast(ubyte[])"server.example.com")
+            if(m == cast(ubyte[])"s3pPLMBiTxaQ9kYGzzhZRbK+xOo=")
                 running = false;
         };
         auto f = sv.start();
