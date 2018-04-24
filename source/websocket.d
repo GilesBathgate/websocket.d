@@ -2,6 +2,7 @@ module websocket;
 
 import std.socket;
 import core.thread;
+import linerange;
 
 class WebSocketServer
 {
@@ -22,6 +23,8 @@ class WebSocketServer
     void delegate(ubyte[]) onMessage;
 
 private:
+
+    static immutable newline = "\r\n"; // not platform dependent in http
 
     static struct NetworkRange
     {
@@ -87,11 +90,33 @@ private:
             range = NetworkRange(this);
         }
 
+        void writeln(string line)
+        {
+            if(!writeBuffer.capacity)
+                writeBuffer.reserve(8192);
+
+            writeBuffer ~= line;
+            writeln();
+        }
+
+        void writeln()
+        {
+             writeBuffer ~= newline;
+        }
+
+        void flush()
+        {
+            source.send(writeBuffer.data);
+            writeBuffer.clear();
+        }
+
         bool pending;
         bool closed;
         Socket source;
         NetworkRange range;
+        Appender!(char[]) writeBuffer;
     }
+
 
     Client current()
     {
@@ -134,7 +159,7 @@ private:
             {
                 try
                 {
-                    handleClient();
+                    handleClient(client);
                 }
                 catch (SocketException ex)
                 {
@@ -145,9 +170,36 @@ private:
         }
     }
 
-    void handleClient()
+    void handleClient(Client client)
     {
-        onMessage([1]);
+        parseHandshake(client);
+    }
+
+    void parseHandshake(Client client)
+    {
+        string[string] headers;
+        string requestMethod;
+        foreach (line; client.range.byLine())
+        {
+            if (line == newline)
+                break;
+
+            import std.algorithm;
+
+            if (!requestMethod && line.canFind("GET"))
+            {
+                requestMethod = line;
+            }
+            else
+            {
+                auto pair = line.findSplit(":");
+                import std.string;
+                headers[pair[0].toLower] = pair[2].strip();
+            }
+            Fiber.yield();
+        }
+
+        onMessage(cast(ubyte[])headers["host"]);
     }
 
     TcpSocket listener;
@@ -162,14 +214,29 @@ unittest {
         Socket sock = new TcpSocket(new InternetAddress("localhost", 4000));
         scope (exit)
             sock.close();
-        return sock.isAlive();
+
+        auto client = new WebSocketServer.Client(sock);
+        client.writeln("GET /chat HTTP/1.1");
+        client.writeln("Host: server.example.com");
+        client.writeln("Upgrade: websocket");
+        client.writeln("Connection: Upgrade");
+        client.writeln("Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==");
+        client.writeln();
+        client.flush();
+
+        return true;
+
     }
 
     static void server()
     {
         auto sv = new WebSocketServer(new InternetAddress("localhost", 4000));
         bool running = true;
-        sv.onMessage = (ubyte[] m){ if(m[0] == 1) running = false; };
+        sv.onMessage = (ubyte[] m)
+        {
+            if(m == cast(ubyte[])"server.example.com")
+                running = false;
+        };
         auto f = sv.start();
         while (running)
         {
