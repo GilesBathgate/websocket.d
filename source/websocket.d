@@ -23,6 +23,60 @@ class WebSocketServer
 
 private:
 
+    static struct NetworkRange
+    {
+        this(Client client)
+        {
+            this.client = client;
+        }
+
+        bool empty() @safe
+        {
+            return client.closed;
+        }
+
+        ubyte[] front() @safe
+        {
+            return data;
+        }
+
+        void popFront() @safe
+        {
+            if (!client.pending)
+            {
+                data.length = 0;
+                return;
+            }
+
+            ubyte[8192] buffer;
+            auto len = client.source.receive(buffer);
+            switch (len)
+            {
+            case 0:
+                data.length = 0;
+                client.closed = true;
+                return;
+            case Socket.ERROR:
+                if (wouldHaveBlocked())
+                {
+                    client.pending = false;
+                    return;
+                }
+                throw new SocketException(lastSocketError);
+            default:
+                data = buffer[0 .. len].dup;
+                break;
+            }
+
+            if (len < buffer.length)
+                client.pending = false;
+        }
+
+        ubyte[] data;
+        Client client;
+
+    }
+
     static class Client
     {
         import std.array;
@@ -30,11 +84,13 @@ private:
         this(Socket source)
         {
             this.source = source;
+            range = NetworkRange(this);
         }
 
         bool pending;
         bool closed;
         Socket source;
+        NetworkRange range;
     }
 
     Client current()
@@ -94,6 +150,13 @@ private:
         onMessage([1]);
     }
 
+    TcpSocket listener;
+    Client[Socket] clients;
+    Duration timeout;
+}
+
+unittest {
+
     static bool client()
     {
         Socket sock = new TcpSocket(new InternetAddress("localhost", 4000));
@@ -115,16 +178,10 @@ private:
         }
     }
 
-    TcpSocket listener;
-    Client[Socket] clients;
-    Duration timeout;
-}
-
-unittest {
     import core.thread;
-    new Thread(&WebSocketServer.server).start();
+    new Thread(&server).start();
     Thread.sleep(1.seconds);
 
-    auto connected = WebSocketServer.client();
+    auto connected = client();
     assert(connected);
 }
