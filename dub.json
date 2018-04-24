@@ -1,0 +1,9 @@
+{
+    "name": "websocket-d",
+    "authors": [
+        "Giles Bathgate"
+    ],
+    "description": "A minimal D websocket library",
+    "copyright": "Copyright © 2018, Giles Bathgate",
+    "license": "MIT"
+}
