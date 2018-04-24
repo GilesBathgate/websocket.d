@@ -26,6 +26,7 @@ class WebSocketServer
 unittest {
     import core.thread;
     new Thread(&WebSocketServer.server).start();
+    Thread.sleep(1.seconds);
     auto connected = WebSocketServer.client();
     assert(connected);
 }
