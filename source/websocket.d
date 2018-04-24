@@ -19,22 +19,84 @@ class WebSocketServer
         return new Fiber(&loop);
     }
 
+    void delegate(ubyte[]) onMessage;
+
 private:
+
+    static class Client
+    {
+        import std.array;
+
+        this(Socket source)
+        {
+            this.source = source;
+        }
+
+        bool pending;
+        bool closed;
+        Socket source;
+    }
+
+    Client current()
+    {
+        scope set = new SocketSet(10);
+        set.add(listener);
+        foreach (r; clients.byKey)
+            set.add(r);
+
+        auto c = Socket.select(set, null, null, timeout);
+        if (c <= 0)
+            return null;
+
+        if (set.isSet(listener))
+        {
+            auto source = listener.accept();
+            clients[source] = new Client(source);
+        }
+
+        foreach (client; clients.byKeyValue) {
+            if (client.key !is listener && set.isSet(client.key))
+            {
+                if(client.value.closed) {
+                    clients.remove(client.key);
+                } else {
+                    client.value.pending = true;
+                    return client.value;
+                }
+            }
+        }
+
+        return null;
+    }
 
     void loop()
     {
-        while(true)
+        while (true)
         {
-            listener.accept();
+            auto client = current();
+            if (client)
+            {
+                try
+                {
+                    handleClient();
+                }
+                catch (SocketException ex)
+                {
+                    clients.remove(client.source);
+                }
+            }
             Fiber.yield();
         }
     }
 
+    void handleClient()
+    {
+        onMessage([1]);
+    }
+
     static bool client()
     {
-        auto domain = "localhost";
-        ushort port = 4000;
-        Socket sock = new TcpSocket(new InternetAddress(domain, port));
+        Socket sock = new TcpSocket(new InternetAddress("localhost", 4000));
         scope (exit)
             sock.close();
         return sock.isAlive();
@@ -42,18 +104,20 @@ private:
 
     static void server()
     {
-        auto sv = new WebSocketServer(new InternetAddress(4000));
+        auto sv = new WebSocketServer(new InternetAddress("localhost", 4000));
         bool running = true;
+        sv.onMessage = (ubyte[] m){ if(m[0] == 1) running = false; };
         auto f = sv.start();
         while (running)
         {
             f.call();
             Thread.sleep(10.msecs);
-            running = false;
         }
     }
 
-    Socket listener;
+    TcpSocket listener;
+    Client[Socket] clients;
+    Duration timeout;
 }
 
 unittest {
