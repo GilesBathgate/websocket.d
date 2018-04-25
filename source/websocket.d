@@ -92,7 +92,7 @@ private:
 
         void writeln(string line)
         {
-            if(!writeBuffer.capacity)
+            if (!writeBuffer.capacity)
                 writeBuffer.reserve(8192);
 
             writeBuffer ~= line;
@@ -101,7 +101,7 @@ private:
 
         void writeln()
         {
-             writeBuffer ~= newline;
+            writeBuffer ~= newline;
         }
 
         void flush()
@@ -116,7 +116,6 @@ private:
         NetworkRange range;
         Appender!(char[]) writeBuffer;
     }
-
 
     Client current()
     {
@@ -135,12 +134,16 @@ private:
             clients[source] = new Client(source);
         }
 
-        foreach (client; clients.byKeyValue) {
+        foreach (client; clients.byKeyValue)
+        {
             if (client.key !is listener && set.isSet(client.key))
             {
-                if(client.value.closed) {
+                if (client.value.closed)
+                {
                     clients.remove(client.key);
-                } else {
+                }
+                else
+                {
                     client.value.pending = true;
                     return client.value;
                 }
@@ -173,7 +176,7 @@ private:
     void handleClient(Client client)
     {
         auto accept = parseHandshake(client);
-        onMessage(cast(ubyte[])accept);
+        onMessage(cast(ubyte[]) accept);
     }
 
     string parseHandshake(Client client)
@@ -195,19 +198,20 @@ private:
             {
                 auto pair = line.findSplit(":");
                 import std.string;
+
                 headers[pair[0].toLower] = pair[2].strip();
             }
             Fiber.yield();
         }
 
-        if(websocketRequested(headers))
+        if (websocketRequested(headers))
         {
-            if(auto k = Headers.Sec_WebSocket_Key in headers)
+            if (auto k = Headers.Sec_WebSocket_Key in headers)
             {
                 string key = *k ~ "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
                 import std.digest.sha, std.base64;
 
-                return  Base64.encode(sha1Of(key));
+                return Base64.encode(sha1Of(key));
             }
         }
 
@@ -216,20 +220,22 @@ private:
 
     bool websocketRequested(string[string] headers)
     {
-        if(auto c = Headers.Connection in headers)
-        if(auto u = Headers.Upgrade in headers)
-            return *c == HeaderFields.Upgrade && *u == HeaderFields.WebSocket;
+        if (auto c = Headers.Connection in headers)
+            if (auto u = Headers.Upgrade in headers)
+                return *c == HeaderFields.Upgrade && *u == HeaderFields.WebSocket;
 
         return false;
     }
 
-    enum Headers : string {
+    enum Headers : string
+    {
         Sec_WebSocket_Key = "sec-websocket-key",
         Connection = "connection",
         Upgrade = "upgrade",
     }
 
-    enum HeaderFields : string {
+    enum HeaderFields : string
+    {
         Upgrade = "Upgrade",
         WebSocket = "websocket"
     }
@@ -239,35 +245,21 @@ private:
     Duration timeout;
 }
 
-unittest {
-
-    static bool client()
+unittest
+{
+    static void client()
     {
-        Socket sock = new TcpSocket(new InternetAddress("localhost", 4000));
-        scope (exit)
-            sock.close();
-
-        auto client = new WebSocketServer.Client(sock);
-        client.writeln("GET /chat HTTP/1.1");
-        client.writeln("Host: server.example.com");
-        client.writeln("Upgrade: websocket");
-        client.writeln("Connection: Upgrade");
-        client.writeln("Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==");
-        client.writeln();
-        client.flush();
-
-        return true;
-
+        import std.process;
+        Thread.sleep(1.seconds);
+        spawnProcess(["node", "test/websocketclient.js"]);
     }
 
-    static void server()
+    static bool server()
     {
         auto sv = new WebSocketServer(new InternetAddress("localhost", 4000));
         bool running = true;
-        sv.onMessage = (ubyte[] m)
-        {
-            if(m == cast(ubyte[])"s3pPLMBiTxaQ9kYGzzhZRbK+xOo=")
-                running = false;
+        sv.onMessage = (ubyte[] m) {
+            running = false;
         };
         auto f = sv.start();
         while (running)
@@ -275,12 +267,11 @@ unittest {
             f.call();
             Thread.sleep(10.msecs);
         }
+
+        return true;
     }
 
-    import core.thread;
-    new Thread(&server).start();
-    Thread.sleep(1.seconds);
+    new Thread(&client).start();
 
-    auto connected = client();
-    assert(connected);
+    assert(server());
 }
