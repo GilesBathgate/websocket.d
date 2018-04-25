@@ -3,6 +3,7 @@ module websocket;
 import std.socket;
 import core.thread;
 import linerange;
+import std.string;
 
 class WebSocketServer
 {
@@ -88,18 +89,24 @@ private:
         {
             this.source = source;
             range = NetworkRange(this);
+            writeBuffer.reserve(8192);
         }
 
-        void writeln(string line)
+        void startHeader(string line)
         {
-            if (!writeBuffer.capacity)
-                writeBuffer.reserve(8192);
-
             writeBuffer ~= line;
-            writeln();
+            writeBuffer ~= newline;
         }
 
-        void writeln()
+        void writeHeader(string field, string value)
+        {
+            writeBuffer ~= field;
+            writeBuffer ~= ": ";
+            writeBuffer ~= value;
+            writeBuffer ~= newline;
+        }
+
+        void endHeader()
         {
             writeBuffer ~= newline;
         }
@@ -180,11 +187,11 @@ private:
             auto accept = parseHandshake(client);
             if(accept)
             {
-                client.writeln("HTTP/1.1 101 Switching Protocols");
-                client.writeln("Upgrade: websocket");
-                client.writeln("Connection: Upgrade");
-                client.writeln("Sec-WebSocket-Accept: " ~ accept);
-                client.writeln();
+                client.startHeader("HTTP/1.1 101 Switching Protocols");
+                client.writeHeader(Headers.Upgrade, "websocket");
+                client.writeHeader(Headers.Connection, "Upgrade");
+                client.writeHeader(Headers.Sec_WebSocket_Accept, accept);
+                client.endHeader();
                 client.flush();
                 client.socketUpgraded = true;
 
@@ -220,9 +227,9 @@ private:
 
         if (websocketRequested(headers))
         {
-            if (auto k = Headers.Sec_WebSocket_Key in headers)
+            if (auto k = Headers.Sec_WebSocket_Key.toLower in headers)
             {
-                string key = *k ~ "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+                string key = *k ~ GUID;
                 import std.digest.sha, std.base64;
 
                 return Base64.encode(sha1Of(key));
@@ -234,8 +241,8 @@ private:
 
     bool websocketRequested(string[string] headers)
     {
-        if (auto c = Headers.Connection in headers)
-            if (auto u = Headers.Upgrade in headers)
+        if (auto c = Headers.Connection.toLower in headers)
+            if (auto u = Headers.Upgrade.toLower in headers)
                 return *c == HeaderFields.Upgrade && *u == HeaderFields.WebSocket;
 
         return false;
@@ -243,9 +250,10 @@ private:
 
     enum Headers : string
     {
-        Sec_WebSocket_Key = "sec-websocket-key",
-        Connection = "connection",
-        Upgrade = "upgrade",
+        Connection = "Connection",
+        Upgrade = "Upgrade",
+        Sec_WebSocket_Key = "Sec-WebSocket-Key",
+        Sec_WebSocket_Accept = "Sec-WebSocket-Accept"
     }
 
     enum HeaderFields : string
@@ -253,6 +261,8 @@ private:
         Upgrade = "Upgrade",
         WebSocket = "websocket"
     }
+
+    enum GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
     TcpSocket listener;
     Client[Socket] clients;
