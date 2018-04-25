@@ -1,0 +1,6 @@
+image:https://travis-ci.org/GilesBathgate/websocket.d.svg[link=https://travis-ci.org/GilesBathgate/websocket.d]
+
+Introduction
+------------
+
+websocket.d is a minimal websocket library for the D programming language.
