@@ -194,8 +194,30 @@ private:
                 client.endHeader();
                 client.flush();
                 client.socketUpgraded = true;
+            }
+        } else {
+            client.range.popFront();
+            auto msg = client.range.front;
+            if(!msg)
+                return;
 
-                onMessage([]);
+            auto m = cast(Message*)msg;
+            auto length = m.length;
+            while(msg.length < length)
+            {
+                client.range.popFront();
+                msg ~= client.range.front;
+
+                Fiber.yield();
+            }
+
+            switch(m.opcode)
+            {
+                case Opcodes.Text:
+                    onMessage(m.payload());
+                    break;
+                default:
+                    break;
             }
         }
     }
@@ -248,6 +270,105 @@ private:
         return false;
     }
 
+    enum Opcodes : ubyte
+    {
+        Continue = 0,
+        Text = 1,
+        Binary = 2, // 3, 4, 5, 6, 7 Reserved
+        Close = 8,
+        Ping = 9,
+        Pong = 10 // 11,12,13,14,15 Reserved
+    }
+
+    static struct Message
+    {
+        static assert(this.sizeof == 10);
+        align(1):
+        import std.bitmanip;
+        mixin(bitfields!(
+            Opcodes, "opcode", 4,
+            bool,    "rsv3",   1,
+            bool,    "rsv2",   1,
+            bool,    "rsv1",   1,
+            bool,    "fin",    1,
+            ubyte,   "len",    7,
+            bool,    "masked", 1));
+        ubyte[2] len16;
+        ubyte[6] len64;
+
+        uint offset() @safe
+        {
+            switch(len)
+            {
+                case 0x7E:
+                    return 4;
+                case 0x7F:
+                    return 10;
+                default:
+                    return 2;
+            }
+        }
+
+        @property {
+            size_t length() @safe
+            {
+                auto length = len;
+                switch(length)
+                {
+                    case 0x7E:
+                        return bigEndianToNative!ushort(len16);
+                    case 0x7F:
+                        ubyte[8] loong = len16 ~ len64;
+                        return cast(size_t)bigEndianToNative!ulong(loong);
+                    default:
+                        return length;
+                }
+            }
+
+            void length(size_t length) @safe
+            {
+                if(length < 0x7E)
+                {
+                    len = cast(ubyte)length;
+                }
+            }
+        }
+
+        ubyte[] payload()
+        {
+            auto self = cast(ubyte*)&this;
+            auto o = offset();
+            auto l = length();
+            if (masked)
+            {
+                enum maskLength = uint.sizeof;
+                auto d = o + maskLength;
+                auto mask = self[o .. d];
+                auto data = self[d .. d + l];
+
+                foreach(i, ref b; data)
+                    b = b ^ mask[i % maskLength];
+
+                return data;
+            } else {
+                return self[o .. o + l];
+            }
+        }
+
+        ubyte[] payload(ubyte[] data)
+        {
+            auto self = cast(ubyte*)&this;
+            auto l = data.length;
+            length = l;
+            auto o = offset();
+            ubyte[] buffer = new ubyte[o + l];
+            buffer[0 .. o] = self[0 .. o];
+            buffer[o .. o + l] = data;
+            return buffer;
+        }
+    }
+
+
     enum Headers : string
     {
         Connection = "Connection",
@@ -283,6 +404,7 @@ unittest
         auto sv = new WebSocketServer(new InternetAddress("localhost", 4000));
         bool running = true;
         sv.onMessage = (ubyte[] m) {
+            assert(cast(char[])m == "Hello World!");
             running = false;
         };
         auto f = sv.start();
