@@ -21,7 +21,7 @@ class WebSocketServer
         return new Fiber(&loop);
     }
 
-    void delegate(ubyte[]) onMessage;
+    void delegate(Client, ubyte[]) onMessage;
 
 private:
 
@@ -123,6 +123,14 @@ private:
             source.close();
         }
 
+        void sendText(string text)
+        {
+            Message r;
+            r.fin = true;
+            r.opcode = Opcodes.Text;
+            source.send(r.payload(cast(ubyte[]) text));
+        }
+
         bool socketUpgraded;
         bool pending;
         bool closed;
@@ -190,9 +198,10 @@ private:
 
     void handleClient(Client client)
     {
-        if(!client.socketUpgraded) {
+        if (!client.socketUpgraded)
+        {
             auto accept = parseHandshake(client);
-            if(accept)
+            if (accept)
             {
                 client.startHeader("HTTP/1.1 101 Switching Protocols");
                 client.writeHeader(Headers.Upgrade, "websocket");
@@ -202,15 +211,17 @@ private:
                 client.flush();
                 client.socketUpgraded = true;
             }
-        } else {
+        }
+        else
+        {
             client.range.popFront();
             auto msg = client.range.front;
-            if(!msg)
+            if (!msg)
                 return;
 
-            auto m = cast(Message*)msg;
+            auto m = cast(Message*) msg;
             auto length = m.length;
-            while(msg.length < length)
+            while (msg.length < length)
             {
                 client.range.popFront();
                 msg ~= client.range.front;
@@ -218,33 +229,33 @@ private:
                 Fiber.yield();
             }
 
-            switch(m.opcode)
+            switch (m.opcode)
             {
-                case Opcodes.Text:
-                    onMessage(m.payload());
-                    break;
-                case Opcodes.Ping:
-                    Message r;
-                    r.fin = true;
-                    r.opcode = Opcodes.Pong;
-                    client.source.send(r.payload([]));
-                    break;
-                case Opcodes.Pong:
-                    Message r;
-                    r.fin = true;
-                    r.opcode = Opcodes.Ping;
-                    client.source.send(r.payload([]));
-                    break;
-                 case Opcodes.Close:
-                    Message r;
-                    r.fin = true;
-                    r.opcode = Opcodes.Close;
-                    client.source.send(r.payload([]));
-                    client.close();
-                    clients.remove(client.source);
-                    break;
-                default:
-                    break;
+            case Opcodes.Text:
+                onMessage(client, m.payload());
+                break;
+            case Opcodes.Ping:
+                Message r;
+                r.fin = true;
+                r.opcode = Opcodes.Pong;
+                client.source.send(r.payload([]));
+                break;
+            case Opcodes.Pong:
+                Message r;
+                r.fin = true;
+                r.opcode = Opcodes.Ping;
+                client.source.send(r.payload([]));
+                break;
+            case Opcodes.Close:
+                Message r;
+                r.fin = true;
+                r.opcode = Opcodes.Close;
+                client.source.send(r.payload([]));
+                client.close();
+                clients.remove(client.source);
+                break;
+            default:
+                break;
             }
         }
     }
@@ -310,7 +321,7 @@ private:
     static struct Message
     {
         static assert(this.sizeof == 10);
-        align(1):
+    align(1):
         import std.bitmanip;
         mixin(bitfields!(
             Opcodes, "opcode", 4,
@@ -325,38 +336,39 @@ private:
 
         uint offset() @safe
         {
-            switch(len)
+            switch (len)
             {
-                case 0x7E:
-                    return 4;
-                case 0x7F:
-                    return 10;
-                default:
-                    return 2;
+            case 0x7E:
+                return 4;
+            case 0x7F:
+                return 10;
+            default:
+                return 2;
             }
         }
 
-        @property {
+        @property
+        {
             size_t length() @safe
             {
                 auto length = len;
-                switch(length)
+                switch (length)
                 {
-                    case 0x7E:
-                        return bigEndianToNative!ushort(len16);
-                    case 0x7F:
-                        ubyte[8] loong = len16 ~ len64;
-                        return cast(size_t)bigEndianToNative!ulong(loong);
-                    default:
-                        return length;
+                case 0x7E:
+                    return bigEndianToNative!ushort(len16);
+                case 0x7F:
+                    ubyte[8] loong = len16 ~ len64;
+                    return cast(size_t) bigEndianToNative!ulong(loong);
+                default:
+                    return length;
                 }
             }
 
             void length(size_t length) @safe
             {
-                if(length < 0x7E)
+                if (length < 0x7E)
                 {
-                    len = cast(ubyte)length;
+                    len = cast(ubyte) length;
                 }
             }
         }
@@ -373,11 +385,13 @@ private:
                 auto mask = self[o .. d];
                 auto data = self[d .. d + l];
 
-                foreach(i, ref b; data)
+                foreach (i, ref b; data)
                     b = b ^ mask[i % maskLength];
 
                 return data;
-            } else {
+            }
+            else
+            {
                 return self[o .. o + l];
             }
         }
@@ -394,7 +408,6 @@ private:
             return buffer;
         }
     }
-
 
     enum Headers : string
     {
@@ -422,6 +435,7 @@ unittest
     static void client()
     {
         import std.process;
+
         Thread.sleep(1.seconds);
         spawnProcess(["node", "test/websocketclient.js"]);
     }
@@ -430,8 +444,10 @@ unittest
     {
         auto sv = new WebSocketServer(new InternetAddress("localhost", 4000));
         bool running = true;
-        sv.onMessage = (ubyte[] m) {
-            assert(cast(char[])m == "Hello World!");
+        sv.onMessage = (WebSocketServer.Client c, ubyte[] m) {
+            string msg = cast(immutable char[]) m;
+            assert(msg == "Hello World!");
+            c.sendText(msg); // Echo.
             running = false;
         };
         auto f = sv.start();
