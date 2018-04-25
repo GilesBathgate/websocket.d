@@ -7,10 +7,12 @@ client.on('connectFailed', function(error) {
 });
 
 client.on('connect', function(connection) {
+
     console.log('connected');
 
     if (connection.connected) {
         connection.sendUTF("Hello World!");
+        connection.close();
     }
 });
 

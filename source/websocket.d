@@ -117,6 +117,12 @@ private:
             writeBuffer.clear();
         }
 
+        void close()
+        {
+            source.shutdown(SocketShutdown.BOTH);
+            source.close();
+        }
+
         bool socketUpgraded;
         bool pending;
         bool closed;
@@ -148,6 +154,7 @@ private:
             {
                 if (client.value.closed)
                 {
+                    client.value.close();
                     clients.remove(client.key);
                 }
                 else
@@ -215,6 +222,14 @@ private:
             {
                 case Opcodes.Text:
                     onMessage(m.payload());
+                    break;
+                 case Opcodes.Close:
+                    Message r;
+                    r.fin = true;
+                    r.opcode = Opcodes.Close;
+                    client.source.send(r.payload([]));
+                    client.close();
+                    clients.remove(client.source);
                     break;
                 default:
                     break;
