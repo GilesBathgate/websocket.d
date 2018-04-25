@@ -223,6 +223,18 @@ private:
                 case Opcodes.Text:
                     onMessage(m.payload());
                     break;
+                case Opcodes.Ping:
+                    Message r;
+                    r.fin = true;
+                    r.opcode = Opcodes.Pong;
+                    client.source.send(r.payload([]));
+                    break;
+                case Opcodes.Pong:
+                    Message r;
+                    r.fin = true;
+                    r.opcode = Opcodes.Ping;
+                    client.source.send(r.payload([]));
+                    break;
                  case Opcodes.Close:
                     Message r;
                     r.fin = true;
