@@ -110,6 +110,7 @@ private:
             writeBuffer.clear();
         }
 
+        bool socketUpgraded;
         bool pending;
         bool closed;
         Socket source;
@@ -175,8 +176,21 @@ private:
 
     void handleClient(Client client)
     {
-        auto accept = parseHandshake(client);
-        onMessage(cast(ubyte[]) accept);
+        if(!client.socketUpgraded) {
+            auto accept = parseHandshake(client);
+            if(accept)
+            {
+                client.writeln("HTTP/1.1 101 Switching Protocols");
+                client.writeln("Upgrade: websocket");
+                client.writeln("Connection: Upgrade");
+                client.writeln("Sec-WebSocket-Accept: " ~ accept);
+                client.writeln();
+                client.flush();
+                client.socketUpgraded = true;
+
+                onMessage([]);
+            }
+        }
     }
 
     string parseHandshake(Client client)
