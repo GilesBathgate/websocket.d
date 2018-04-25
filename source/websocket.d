@@ -351,8 +351,8 @@ private:
         {
             size_t length() @safe
             {
-                auto length = len;
-                switch (length)
+                auto l = len;
+                switch (l)
                 {
                 case 0x7E:
                     return bigEndianToNative!ushort(len16);
@@ -360,15 +360,27 @@ private:
                     ubyte[8] loong = len16 ~ len64;
                     return cast(size_t) bigEndianToNative!ulong(loong);
                 default:
-                    return length;
+                    return l;
                 }
             }
 
-            void length(size_t length) @safe
+            void length(size_t l) @safe
             {
-                if (length < 0x7E)
+                if (l < 0x7E)
                 {
-                    len = cast(ubyte) length;
+                    len = cast(ubyte) l;
+                }
+                else if (l <= ushort.max)
+                {
+                    len = 0x7E;
+                    len16 = nativeToBigEndian(cast(ushort) l);
+                }
+                else if (l <= ulong.max)
+                {
+                    len = 0x7F;
+                    ubyte[8] loong = nativeToBigEndian(cast(ulong) l);
+                    len16 = loong[0 .. 2];
+                    len64 = loong[2 .. 8];
                 }
             }
         }
@@ -386,7 +398,7 @@ private:
                 auto data = self[d .. d + l];
 
                 foreach (i, ref b; data)
-                    b = b ^ mask[i % maskLength];
+                    b ^= mask[i % maskLength];
 
                 return data;
             }
@@ -414,7 +426,8 @@ private:
         Connection = "Connection",
         Upgrade = "Upgrade",
         Sec_WebSocket_Key = "Sec-WebSocket-Key",
-        Sec_WebSocket_Accept = "Sec-WebSocket-Accept"
+        Sec_WebSocket_Accept = "Sec-WebSocket-Accept",
+        Sec_WebSocket_Version = "Sec-WebSocket-Version"
     }
 
     enum HeaderFields : string
