@@ -495,7 +495,7 @@ unittest
         return true;
     }
 
-    new Thread(&client).start();
+    client();
 
     assert(server());
 }
