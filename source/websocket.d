@@ -414,10 +414,32 @@ private:
             auto l = data.length;
             length = l;
             auto o = offset();
-            ubyte[] buffer = new ubyte[o + l];
-            buffer[0 .. o] = self[0 .. o];
-            buffer[o .. o + l] = data;
-            return buffer;
+
+            if(masked)
+            {
+                enum maskLength = uint.sizeof;
+                auto d = o + maskLength;
+
+                import std.random;
+                auto mask = nativeToBigEndian(uniform(1, uint.max));
+
+                ubyte[] buffer = new ubyte[o + maskLength + l];
+                buffer[0 .. o] = self[0 .. o];
+                buffer[o .. d] = mask;
+                buffer[d .. d + l] = data;
+
+                foreach(i, ref b; buffer[d .. d + l])
+                    b ^= mask[i % maskLength];
+
+                return buffer;
+            }
+            else
+            {
+                ubyte[] buffer = new ubyte[o + l];
+                buffer[0 .. o] = self[0 .. o];
+                buffer[o .. o + l] = data;
+                return buffer;
+            }
         }
     }
 
