@@ -15,13 +15,9 @@ client.on('connect', function(connection) {
         }
     });
 
-    function sendMessage() {
-        if (connection.connected) {
-            connection.sendUTF("Hello World!");
-        }
+    if (connection.connected) {
+        connection.sendUTF("Hello World!");
     }
-
-    setTimeout(sendMessage, 100);
 });
 
 client.connect('ws://localhost:4000');
