@@ -108,48 +108,38 @@ private:
         }
         else
         {
-            client.range.popFront();
-            auto msg = client.range.front;
-            if (!msg)
-                return;
-
-            auto f = cast(Frame*) msg;
-            auto length = f.length;
-            while (msg.length < length)
+            foreach (f; client.range.byFrame())
             {
-                client.range.popFront();
-                msg ~= client.range.front;
+                switch (f.opcode)
+                {
+                case Opcodes.Text:
+                    onMessage(client, f.payload());
+                    break;
+                case Opcodes.Ping:
+                    Frame r;
+                    r.fin = true;
+                    r.opcode = Opcodes.Pong;
+                    client.source.send(r.payload([]));
+                    break;
+                case Opcodes.Pong:
+                    Frame r;
+                    r.fin = true;
+                    r.opcode = Opcodes.Ping;
+                    client.source.send(r.payload([]));
+                    break;
+                case Opcodes.Close:
+                    Frame r;
+                    r.fin = true;
+                    r.opcode = Opcodes.Close;
+                    client.source.send(r.payload([]));
+                    client.close();
+                    clients.remove(client.source);
+                    break;
+                default:
+                    break;
+                }
 
                 Fiber.yield();
-            }
-
-            switch (f.opcode)
-            {
-            case Opcodes.Text:
-                onMessage(client, f.payload());
-                break;
-            case Opcodes.Ping:
-                Frame r;
-                r.fin = true;
-                r.opcode = Opcodes.Pong;
-                client.source.send(r.payload([]));
-                break;
-            case Opcodes.Pong:
-                Frame r;
-                r.fin = true;
-                r.opcode = Opcodes.Ping;
-                client.source.send(r.payload([]));
-                break;
-            case Opcodes.Close:
-                Frame r;
-                r.fin = true;
-                r.opcode = Opcodes.Close;
-                client.source.send(r.payload([]));
-                client.close();
-                clients.remove(client.source);
-                break;
-            default:
-                break;
             }
         }
     }
@@ -230,7 +220,7 @@ unittest
     {
         import std.process;
 
-        Thread.sleep(1.seconds);
+        Thread.sleep(10.msecs);
         spawnProcess(["node", "test/websocketclient.js"]);
     }
 

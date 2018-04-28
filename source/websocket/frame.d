@@ -1,5 +1,9 @@
 module frame;
 
+import std.traits;
+import std.range;
+import core.thread;
+
 enum Opcodes : ubyte
 {
     Continue = 0,
@@ -8,6 +12,63 @@ enum Opcodes : ubyte
     Close = 8,
     Ping = 9,
     Pong = 10 // 11,12,13,14,15 Reserved
+}
+
+FrameRange!R byFrame(R, S = ReturnType!((R r) => r.front))(R range)
+if (isInputRange!(Unqual!R) && isInputRange!S)
+{
+    return FrameRange!R(range);
+}
+
+struct FrameRange(T)
+if (is(ReturnType!((T r) => r.front) : void[]))
+{
+    this(T range)
+    {
+        this.range = range;
+        popFront();
+    }
+
+    bool empty()
+    {
+        return !chunk.length;
+    }
+
+    Frame* front()
+    {
+        return frame;
+    }
+
+    void popFront()
+    {
+        if (empty())
+        {
+            if (range.empty)
+                return;
+
+            range.popFront();
+        }
+
+        chunk = range.front();
+        if (!chunk.length)
+            return;
+
+        frame = cast(Frame*) chunk;
+        auto length = frame.length;
+
+        while (chunk.length < length)
+        {
+            range.popFront();
+            chunk ~= range.front;
+
+            Fiber.yield();
+        }
+
+    }
+
+    ubyte[] chunk;
+    Frame* frame;
+    T range;
 }
 
 struct Frame
@@ -107,12 +168,13 @@ align(1):
         length = l;
         auto o = offset();
 
-        if(masked)
+        if (masked)
         {
             enum maskLength = uint.sizeof;
             auto d = o + maskLength;
 
             import std.random;
+
             auto mask = nativeToBigEndian(uniform(1, uint.max));
 
             ubyte[] buffer = new ubyte[o + maskLength + l];
@@ -120,7 +182,7 @@ align(1):
             buffer[o .. d] = mask;
             buffer[d .. d + l] = data;
 
-            foreach(i, ref b; buffer[d .. d + l])
+            foreach (i, ref b; buffer[d .. d + l])
                 b ^= mask[i % maskLength];
 
             return buffer;
