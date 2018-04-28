@@ -1,11 +1,11 @@
-module websocket;
+module server;
 
 import std.socket;
 import core.thread;
 import linerange;
 import std.string;
 
-class WebSocketServer
+class Server
 {
 
     this(Address addr)
@@ -483,9 +483,9 @@ unittest
 
     static bool server()
     {
-        auto sv = new WebSocketServer(new InternetAddress("localhost", 4000));
+        auto sv = new Server(new InternetAddress("localhost", 4000));
         bool running = true;
-        sv.onMessage = (WebSocketServer.Client c, ubyte[] m) {
+        sv.onMessage = (Server.Client c, ubyte[] m) {
             string msg = cast(immutable char[]) m;
             assert(msg == "Hello World!");
             c.sendText(msg); // Echo.
