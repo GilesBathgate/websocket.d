@@ -15,6 +15,12 @@ class WebSocketServer
         listener.bind(addr);
     }
 
+    ~this()
+    {
+        listener.shutdown(SocketShutdown.BOTH);
+        listener.close();
+    }
+
     Fiber start()
     {
         listener.listen(10);
