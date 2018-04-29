@@ -95,13 +95,13 @@ class Frame
     this(ubyte[] data)
     {
         this.data = data;
-        this.header = cast(Header*)data;
+        this.header = cast(Header*) data;
     }
 
-    this(size_t payloadLength)
+    this(in size_t payloadLength)
     {
         this.data = new ubyte[frameLength(payloadLength)];
-        this.header = cast(Header*)data;
+        this.header = cast(Header*) data;
         this.length = payloadLength;
     }
 
@@ -118,7 +118,7 @@ class Frame
         }
     }
 
-    size_t frameLength(size_t l)
+    size_t frameLength(in size_t l)
     {
         if (l < 0x7E)
         {
@@ -152,7 +152,7 @@ class Frame
             }
         }
 
-        void length(size_t l)
+        void length(in size_t l)
         {
             if (l < 0x7E)
             {
@@ -173,6 +173,14 @@ class Frame
         }
     }
 
+    enum maskLength = uint.sizeof;
+
+    void mask(ubyte[] payload, in ubyte[] m)
+    {
+        foreach (i, ref b; payload)
+            b ^= m[i % maskLength];
+    }
+
     @property
     {
         ubyte[] payload()
@@ -181,13 +189,10 @@ class Frame
             auto l = length();
             if (header.masked)
             {
-                enum maskLength = uint.sizeof;
                 auto d = o + maskLength;
-                auto mask = data[o .. d];
+                auto m = data[o .. d];
                 auto result = data[d .. d + l];
-
-                foreach (i, ref b; result)
-                    b ^= mask[i % maskLength];
+                mask(result, m);
 
                 return result;
             }
@@ -197,29 +202,23 @@ class Frame
             }
         }
 
-        void payload(ubyte[] payload)
+        void payload(in ubyte[] payload)
         {
             auto o = offset();
-            auto l = payload.length;
-
             if (header.masked)
             {
-                enum maskLength = uint.sizeof;
-                auto d = o + maskLength;
-
                 import std.random;
 
-                auto mask = nativeToBigEndian(uniform(1, uint.max));
+                auto m = nativeToBigEndian(uniform(1, uint.max));
 
-                data[o .. d] = mask;
-                data[d .. d + l] = payload;
-
-                foreach (i, ref b; data[d .. d + l])
-                    b ^= mask[i % maskLength];
+                auto d = o + maskLength;
+                data[o .. d] = m;
+                data[d .. $] = payload;
+                mask(data[d .. $], m);
             }
             else
             {
-                data[o .. o + l] = payload;
+                data[o .. $] = payload;
             }
         }
     }
