@@ -1,4 +1,5 @@
 image:https://travis-ci.org/GilesBathgate/websocket.d.svg[link=https://travis-ci.org/GilesBathgate/websocket.d]
+image:https://codecov.io/gh/GilesBathgate/websocket.d/branch/master/graph/badge.svg[link=https://codecov.io/gh/GilesBathgate/websocket.d]
 
 Introduction
 ------------
