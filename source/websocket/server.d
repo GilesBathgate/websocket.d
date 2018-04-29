@@ -110,28 +110,28 @@ private:
         {
             foreach (f; client.range.byFrame())
             {
-                switch (f.opcode)
+                switch (f.header.opcode)
                 {
                 case Opcodes.Text:
                     onMessage(client, f.payload());
                     break;
                 case Opcodes.Ping:
-                    Frame r;
-                    r.fin = true;
-                    r.opcode = Opcodes.Pong;
-                    client.source.send(r.payload([]));
+                    auto r = new Frame(0);
+                    r.header.fin = true;
+                    r.header.opcode = Opcodes.Pong;
+                    client.source.send(r.data);
                     break;
                 case Opcodes.Pong:
-                    Frame r;
-                    r.fin = true;
-                    r.opcode = Opcodes.Ping;
-                    client.source.send(r.payload([]));
+                    auto r = new Frame(0);
+                    r.header.fin = true;
+                    r.header.opcode = Opcodes.Ping;
+                    client.source.send(r.data);
                     break;
                 case Opcodes.Close:
-                    Frame r;
-                    r.fin = true;
-                    r.opcode = Opcodes.Close;
-                    client.source.send(r.payload([]));
+                    auto r = new Frame(0);
+                    r.header.fin = true;
+                    r.header.opcode = Opcodes.Close;
+                    client.source.send(r.data);
                     client.close();
                     clients.remove(client.source);
                     break;

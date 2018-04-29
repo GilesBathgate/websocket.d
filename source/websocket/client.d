@@ -50,10 +50,11 @@ class Client
 
     void sendText(string text)
     {
-        Frame f;
-        f.fin = true;
-        f.opcode = Opcodes.Text;
-        source.send(f.payload(cast(ubyte[]) text));
+        auto f = new Frame(text.length);
+        f.header.fin = true;
+        f.header.opcode = Opcodes.Text;
+        f.payload = cast(ubyte[]) text;
+        source.send(f.data);
     }
 
     bool socketUpgraded;

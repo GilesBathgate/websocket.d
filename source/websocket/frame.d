@@ -3,6 +3,7 @@ module frame;
 import std.traits;
 import std.range;
 import core.thread;
+import std.bitmanip;
 
 enum Opcodes : ubyte
 {
@@ -34,7 +35,7 @@ if (is(ReturnType!((T r) => r.front) : void[]))
         return !chunk.length;
     }
 
-    Frame* front()
+    Frame front()
     {
         return frame;
     }
@@ -53,7 +54,7 @@ if (is(ReturnType!((T r) => r.front) : void[]))
         if (!chunk.length)
             return;
 
-        frame = cast(Frame*) chunk;
+        frame = new Frame(chunk);
         auto length = frame.length;
 
         while (chunk.length < length)
@@ -63,19 +64,17 @@ if (is(ReturnType!((T r) => r.front) : void[]))
 
             Fiber.yield();
         }
-
     }
 
     ubyte[] chunk;
-    Frame* frame;
+    Frame frame;
     T range;
 }
 
-struct Frame
+struct Header
 {
     static assert(this.sizeof == 10);
 align(1):
-    import std.bitmanip;
     mixin(bitfields!(
         Opcodes, "opcode", 4,
         bool,    "rsv3",   1,
@@ -86,10 +85,29 @@ align(1):
         bool,    "masked", 1));
     ubyte[2] len16;
     ubyte[6] len64;
+}
 
-    uint offset() @safe
+class Frame
+{
+    Header* header;
+    ubyte[] data;
+
+    this(ubyte[] data)
     {
-        switch (len)
+        this.data = data;
+        this.header = cast(Header*)data;
+    }
+
+    this(size_t payloadLength)
+    {
+        this.data = new ubyte[frameLength(payloadLength)];
+        this.header = cast(Header*)data;
+        this.length = payloadLength;
+    }
+
+    uint offset()
+    {
+        switch (header.len)
         {
         case 0x7E:
             return 4;
@@ -100,99 +118,109 @@ align(1):
         }
     }
 
+    size_t frameLength(size_t l)
+    {
+        if (l < 0x7E)
+        {
+            return l + 2;
+        }
+        else if (l <= ushort.max)
+        {
+            return l + 4;
+        }
+        else if (l <= ulong.max)
+        {
+            return l + 10;
+        }
+        return 0;
+    }
+
     @property
     {
-        size_t length() @safe
+        size_t length()
         {
-            auto l = len;
+            auto l = header.len;
             switch (l)
             {
             case 0x7E:
-                return bigEndianToNative!ushort(len16);
+                return bigEndianToNative!ushort(header.len16);
             case 0x7F:
-                ubyte[8] loong = len16 ~ len64;
+                ubyte[8] loong = header.len16 ~ header.len64;
                 return cast(size_t) bigEndianToNative!ulong(loong);
             default:
                 return l;
             }
         }
 
-        void length(size_t l) @safe
+        void length(size_t l)
         {
             if (l < 0x7E)
             {
-                len = cast(ubyte) l;
+                header.len = cast(ubyte) l;
             }
             else if (l <= ushort.max)
             {
-                len = 0x7E;
-                len16 = nativeToBigEndian(cast(ushort) l);
+                header.len = 0x7E;
+                header.len16 = nativeToBigEndian(cast(ushort) l);
             }
             else if (l <= ulong.max)
             {
-                len = 0x7F;
+                header.len = 0x7F;
                 ubyte[8] loong = nativeToBigEndian(cast(ulong) l);
-                len16 = loong[0 .. 2];
-                len64 = loong[2 .. 8];
+                header.len16 = loong[0 .. 2];
+                header.len64 = loong[2 .. 8];
             }
         }
     }
 
-    ubyte[] payload()
+    @property
     {
-        auto self = cast(ubyte*)&this;
-        auto o = offset();
-        auto l = length();
-        if (masked)
+        ubyte[] payload()
         {
-            enum maskLength = uint.sizeof;
-            auto d = o + maskLength;
-            auto mask = self[o .. d];
-            auto data = self[d .. d + l];
+            auto o = offset();
+            auto l = length();
+            if (header.masked)
+            {
+                enum maskLength = uint.sizeof;
+                auto d = o + maskLength;
+                auto mask = data[o .. d];
+                auto result = data[d .. d + l];
 
-            foreach (i, ref b; data)
-                b ^= mask[i % maskLength];
+                foreach (i, ref b; result)
+                    b ^= mask[i % maskLength];
 
-            return data;
+                return result;
+            }
+            else
+            {
+                return data[o .. o + l];
+            }
         }
-        else
+
+        void payload(ubyte[] payload)
         {
-            return self[o .. o + l];
-        }
-    }
+            auto o = offset();
+            auto l = payload.length;
 
-    ubyte[] payload(ubyte[] data)
-    {
-        auto self = cast(ubyte*)&this;
-        auto l = data.length;
-        length = l;
-        auto o = offset();
+            if (header.masked)
+            {
+                enum maskLength = uint.sizeof;
+                auto d = o + maskLength;
 
-        if (masked)
-        {
-            enum maskLength = uint.sizeof;
-            auto d = o + maskLength;
+                import std.random;
 
-            import std.random;
+                auto mask = nativeToBigEndian(uniform(1, uint.max));
 
-            auto mask = nativeToBigEndian(uniform(1, uint.max));
+                data[o .. d] = mask;
+                data[d .. d + l] = payload;
 
-            ubyte[] buffer = new ubyte[o + maskLength + l];
-            buffer[0 .. o] = self[0 .. o];
-            buffer[o .. d] = mask;
-            buffer[d .. d + l] = data;
-
-            foreach (i, ref b; buffer[d .. d + l])
-                b ^= mask[i % maskLength];
-
-            return buffer;
-        }
-        else
-        {
-            ubyte[] buffer = new ubyte[o + l];
-            buffer[0 .. o] = self[0 .. o];
-            buffer[o .. o + l] = data;
-            return buffer;
+                foreach (i, ref b; data[d .. d + l])
+                    b ^= mask[i % maskLength];
+            }
+            else
+            {
+                data[o .. o + l] = payload;
+            }
         }
     }
 }
