@@ -3,37 +3,38 @@ module networkrange;
 import std.socket;
 import client;
 
-struct NetworkRange
+@safe struct NetworkRange
 {
-    this(Client client)
+
+    this(Client client, size_t bufferSize = 8192)
     {
         this.client = client;
+        this.buffer = new ubyte[bufferSize];
     }
 
-    bool empty() @safe
+    bool empty()
     {
         return client.closed;
     }
 
-    ubyte[] front() @safe
+    ubyte[] front()
     {
-        return data;
+        return buffer[0 .. length];
     }
 
-    void popFront() @safe
+    void popFront()
     {
         if (!client.pending)
         {
-            data.length = 0;
+            length = 0;
             return;
         }
 
-        ubyte[8192] buffer;
-        auto len = client.source.receive(buffer);
-        switch (len)
+        length = client.source.receive(buffer);
+        switch (length)
         {
         case 0:
-            data.length = 0;
+            length = 0;
             client.closed = true;
             return;
         case Socket.ERROR:
@@ -44,15 +45,15 @@ struct NetworkRange
             }
             throw new SocketException(lastSocketError);
         default:
-            data = buffer[0 .. len].dup;
             break;
         }
 
-        if (len < buffer.length)
+        if (length < buffer.length)
             client.pending = false;
     }
 
-    ubyte[] data;
+    ubyte[] buffer;
+    size_t length;
     Client client;
 
 }
