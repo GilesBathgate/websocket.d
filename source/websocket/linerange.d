@@ -3,6 +3,7 @@ module linerange;
 import std.traits;
 import std.range;
 import std.string;
+import core.thread;
 
 LineRange!R byLine(R, S = ReturnType!((R r) => r.front))(R range)
         if (isInputRange!(Unqual!R) && isInputRange!S)
@@ -20,7 +21,7 @@ struct LineRange(T) if (is(ReturnType!((T r) => r.front) : void[]))
 
     bool empty()
     {
-        return !chunk.length;
+        return range.empty;
     }
 
     string front()
@@ -28,31 +29,32 @@ struct LineRange(T) if (is(ReturnType!((T r) => r.front) : void[]))
         return line;
     }
 
-    void popFront() @safe
+    void popFront()
     {
-        if (empty())
+        auto index = getIndex();
+        while (index == -1)
         {
+            Fiber.yield();
+
+            chunk ~= cast(char[]) range.front();
             if (!range.empty)
-            {
                 range.popFront();
-                chunk = cast(char[]) range.front();
-            }
-            else
-            {
-                return;
-            }
+
+            index = getIndex();
         }
 
+        line = cast(string) chunk[0 .. index];
+        chunk = chunk[index .. $];
+
+    }
+
+    size_t getIndex()
+    {
         auto index = chunk.indexOf('\r');
-        if (index == -1)
-            return;
-
-        if (++index < chunk.length && chunk[index] == '\n')
-        {
+        if (index != -1 && ++index < chunk.length && chunk[index] == '\n')
             ++index;
-            line = chunk[0 .. index].idup;
-            chunk = chunk[index .. $];
-        }
+
+        return index;
     }
 
     char[] chunk;

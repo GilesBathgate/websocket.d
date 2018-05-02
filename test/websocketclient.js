@@ -11,7 +11,7 @@ client.on('connect', function(connection) {
     connection.on('message', function(message) {
         if (message.type === 'utf8') {
             console.log("Received: '" + message.utf8Data + "'");
-            connection.close();
+            connection.sendUTF("Goodbye");
         }
     });
 

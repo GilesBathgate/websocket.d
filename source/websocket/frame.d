@@ -32,7 +32,7 @@ if (is(ReturnType!((T r) => r.front) : void[]))
 
     bool empty()
     {
-        return !chunk.length;
+        return range.empty;
     }
 
     Frame front()
@@ -42,28 +42,28 @@ if (is(ReturnType!((T r) => r.front) : void[]))
 
     void popFront()
     {
-        if (empty())
-        {
-            if (range.empty)
-                return;
-
-            range.popFront();
-        }
-
-        chunk = range.front();
-        if (!chunk.length)
-            return;
-
-        frame = new Frame(chunk);
-        auto length = frame.length;
-
+        auto length = getLength();
         while (chunk.length < length)
         {
-            range.popFront();
-            chunk ~= range.front;
-
             Fiber.yield();
+
+            chunk ~= range.front;
+            if (!range.empty)
+                range.popFront();
+
+            length = getLength();
         }
+
+        chunk = chunk[length .. $];
+    }
+
+    size_t getLength()
+    {
+        if (chunk.length < 2)
+            return -1;
+
+        frame = new Frame(chunk);
+        return frame.frameLength();
     }
 
     ubyte[] chunk;
@@ -100,7 +100,7 @@ class Frame
 
     this(in size_t payloadLength)
     {
-        this.data = new ubyte[frameLength(payloadLength)];
+        this.data = new ubyte[frameLength(payloadLength, false)];
         this.header = cast(Header*) data;
         this.length = payloadLength;
     }
@@ -118,21 +118,27 @@ class Frame
         }
     }
 
-    size_t frameLength(in size_t l)
+    size_t frameLength()
     {
+        return frameLength(header.len, header.masked);
+    }
+
+    size_t frameLength(in size_t l, bool masked)
+    {
+        size_t len;
         if (l < 0x7E)
         {
-            return l + 2;
+            len = l + 2;
         }
         else if (l <= ushort.max)
         {
-            return l + 4;
+            len = l + 4;
         }
         else if (l <= ulong.max)
         {
-            return l + 10;
+            len = l + 10;
         }
-        return 0;
+        return masked ? len + maskLength : len;
     }
 
     @property
