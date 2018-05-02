@@ -99,59 +99,66 @@ private:
                 {
                     auto accept = parseHandshake(_client);
                     if (accept)
-                    {
-                        _client.startHeader("HTTP/1.1 101 Switching Protocols");
-                        _client.writeHeader(Headers.Upgrade, "websocket");
-                        _client.writeHeader(Headers.Connection, "Upgrade");
-                        _client.writeHeader(Headers.Sec_WebSocket_Accept, accept);
-                        _client.endHeader();
-                        _client.flush();
-                        _client.socketUpgraded = true;
-                    }
+                        switchProtocol(_client, accept);
                 }
                 else
                 {
-                    foreach (f; _client.range.byFrame())
-                    {
-                        switch (f.header.opcode)
-                        {
-                        case Opcodes.Text:
-                            onMessage(_client, f.payload());
-                            break;
-                        case Opcodes.Ping:
-                            auto r = new Frame(0);
-                            r.header.fin = true;
-                            r.header.opcode = Opcodes.Pong;
-                            _client.source.send(r.data);
-                            break;
-                        case Opcodes.Pong:
-                            auto r = new Frame(0);
-                            r.header.fin = true;
-                            r.header.opcode = Opcodes.Ping;
-                            _client.source.send(r.data);
-                            break;
-                        case Opcodes.Close:
-                            auto r = new Frame(0);
-                            r.header.fin = true;
-                            r.header.opcode = Opcodes.Close;
-                            _client.source.send(r.data);
-                            _client.close();
-                            clients.remove(_client.source);
-                            break;
-                        default:
-                            break;
-                        }
-
-                        Fiber.yield();
-                    }
+                    parseFrames(_client);
                 }
                 Fiber.yield();
-
             }
             catch (SocketException ex)
             {
                 clients.remove(_client.source);
             }
+        }
+    }
+
+    void switchProtocol(Client client, string accept)
+    {
+        client.startHeader("HTTP/1.1 101 Switching Protocols");
+        client.writeHeader(Headers.Upgrade, HeaderFields.WebSocket);
+        client.writeHeader(Headers.Connection, HeaderFields.Upgrade);
+        client.writeHeader(Headers.Sec_WebSocket_Accept, accept);
+        client.endHeader();
+        client.flush();
+        client.socketUpgraded = true;
+    }
+
+    void parseFrames(Client client)
+    {
+        foreach (f; client.range.byFrame())
+        {
+            switch (f.header.opcode)
+            {
+            case Opcodes.Text:
+                onMessage(client, f.payload());
+                break;
+            case Opcodes.Ping:
+                auto r = new Frame(0);
+                r.header.fin = true;
+                r.header.opcode = Opcodes.Pong;
+                client.source.send(r.data);
+                break;
+            case Opcodes.Pong:
+                auto r = new Frame(0);
+                r.header.fin = true;
+                r.header.opcode = Opcodes.Ping;
+                client.source.send(r.data);
+                break;
+            case Opcodes.Close:
+                auto r = new Frame(0);
+                r.header.fin = true;
+                r.header.opcode = Opcodes.Close;
+                client.source.send(r.data);
+                client.close();
+                clients.remove(client.source);
+                break;
+            default:
+                break;
+            }
+
+            Fiber.yield();
         }
     }
 
@@ -182,7 +189,8 @@ private:
 
         if (websocketRequested(headers))
         {
-            if (auto k = Headers.Sec_WebSocket_Key.toLower in headers)
+            enum Sec_WebSocket_Key = Headers.Sec_WebSocket_Key.toLower;
+            if (auto k = Sec_WebSocket_Key in headers)
             {
                 string key = *k ~ GUID;
                 import std.digest.sha, std.base64;
@@ -196,8 +204,10 @@ private:
 
     bool websocketRequested(string[string] headers)
     {
-        if (auto c = Headers.Connection.toLower in headers)
-            if (auto u = Headers.Upgrade.toLower in headers)
+        enum Connection = Headers.Connection.toLower;
+        enum Upgrade = Headers.Upgrade.toLower;
+        if (auto c = Connection in headers)
+            if (auto u = Upgrade in headers)
                 return *c == HeaderFields.Upgrade && *u == HeaderFields.WebSocket;
 
         return false;
@@ -244,6 +254,7 @@ unittest
         sv.onMessage = (Client c, ubyte[] m) {
             string msg = cast(immutable char[]) m;
             import std.stdio;
+
             writeln("Client: ", msg);
             switch (msg)
             {
@@ -254,9 +265,9 @@ unittest
                 c.sendText("Leaving so soon?");
                 break;
             case "Yes afraid so":
-                 c.sendText("Cherio then");
-                 sv.shutdown();
-                 break;
+                c.sendText("Cherio then");
+                sv.shutdown();
+                break;
             default:
                 assert(0);
             }
