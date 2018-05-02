@@ -10,8 +10,11 @@ client.on('connect', function(connection) {
 
     connection.on('message', function(message) {
         if (message.type === 'utf8') {
-            console.log("Received: '" + message.utf8Data + "'");
-            connection.sendUTF("Goodbye");
+            console.log("Server: " + message.utf8Data);
+            if (message.utf8Data === "Hello World!")
+                connection.sendUTF("Goodbye");
+            else
+                connection.sendUTF("Yes afraid so");
         }
     });
 

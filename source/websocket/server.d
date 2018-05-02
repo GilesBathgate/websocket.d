@@ -95,49 +95,48 @@ private:
         {
             try
             {
-                auto client = _client; //TODO;
-                if (!client.socketUpgraded)
+                if (!_client.socketUpgraded)
                 {
-                    auto accept = parseHandshake(client);
+                    auto accept = parseHandshake(_client);
                     if (accept)
                     {
-                        client.startHeader("HTTP/1.1 101 Switching Protocols");
-                        client.writeHeader(Headers.Upgrade, "websocket");
-                        client.writeHeader(Headers.Connection, "Upgrade");
-                        client.writeHeader(Headers.Sec_WebSocket_Accept, accept);
-                        client.endHeader();
-                        client.flush();
-                        client.socketUpgraded = true;
+                        _client.startHeader("HTTP/1.1 101 Switching Protocols");
+                        _client.writeHeader(Headers.Upgrade, "websocket");
+                        _client.writeHeader(Headers.Connection, "Upgrade");
+                        _client.writeHeader(Headers.Sec_WebSocket_Accept, accept);
+                        _client.endHeader();
+                        _client.flush();
+                        _client.socketUpgraded = true;
                     }
                 }
                 else
                 {
-                    foreach (f; client.range.byFrame())
+                    foreach (f; _client.range.byFrame())
                     {
                         switch (f.header.opcode)
                         {
                         case Opcodes.Text:
-                            onMessage(client, f.payload());
+                            onMessage(_client, f.payload());
                             break;
                         case Opcodes.Ping:
                             auto r = new Frame(0);
                             r.header.fin = true;
                             r.header.opcode = Opcodes.Pong;
-                            client.source.send(r.data);
+                            _client.source.send(r.data);
                             break;
                         case Opcodes.Pong:
                             auto r = new Frame(0);
                             r.header.fin = true;
                             r.header.opcode = Opcodes.Ping;
-                            client.source.send(r.data);
+                            _client.source.send(r.data);
                             break;
                         case Opcodes.Close:
                             auto r = new Frame(0);
                             r.header.fin = true;
                             r.header.opcode = Opcodes.Close;
-                            client.source.send(r.data);
-                            client.close();
-                            clients.remove(client.source);
+                            _client.source.send(r.data);
+                            _client.close();
+                            clients.remove(_client.source);
                             break;
                         default:
                             break;
@@ -244,6 +243,8 @@ unittest
         bool running = true;
         sv.onMessage = (Client c, ubyte[] m) {
             string msg = cast(immutable char[]) m;
+            import std.stdio;
+            writeln("Client: ", msg);
             switch (msg)
             {
             case "Hello World!":
@@ -251,8 +252,11 @@ unittest
                 break;
             case "Goodbye":
                 c.sendText("Leaving so soon?");
-                sv.shutdown();
                 break;
+            case "Yes afraid so":
+                 c.sendText("Cherio then");
+                 sv.shutdown();
+                 break;
             default:
                 assert(0);
             }
