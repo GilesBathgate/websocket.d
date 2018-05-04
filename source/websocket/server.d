@@ -6,6 +6,7 @@ import std.string;
 import linerange;
 import client;
 import frame;
+import message;
 
 class Server
 {
@@ -45,7 +46,7 @@ class Server
         }
     }
 
-    void delegate(Client, ubyte[]) onMessage;
+    void delegate(Message) onMessage;
 
 private:
 
@@ -132,7 +133,10 @@ private:
             switch (f.header.opcode)
             {
             case Opcodes.Text:
-                onMessage(client, f.payload());
+                onMessage(Message(client, Message.Type.Text, f.payload()));
+                break;
+            case Opcodes.Binary:
+                onMessage(Message(client, Message.Type.Binary, f.payload()));
                 break;
             case Opcodes.Ping:
                 auto r = new Frame(0);
@@ -251,21 +255,20 @@ unittest
     {
         auto sv = new Server(new InternetAddress("localhost", 4000));
         bool running = true;
-        sv.onMessage = (Client c, ubyte[] m) {
-            string msg = cast(immutable char[]) m;
+        sv.onMessage = (m) {
             import std.stdio;
 
-            writeln("Client: ", msg);
-            switch (msg)
+            writeln("Client: ", m.text);
+            switch (m.text)
             {
             case "Hello World!":
-                c.sendText(msg); // Echo.
+                m.client.sendText(m.text); // Echo.
                 break;
             case "Goodbye":
-                c.sendText("Leaving so soon?");
+                m.client.sendText("Leaving so soon?");
                 break;
             case "Yes afraid so":
-                c.sendText("Cherio then");
+                m.client.sendText("Cherio then");
                 sv.shutdown();
                 break;
             default:
