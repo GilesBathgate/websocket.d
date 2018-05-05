@@ -47,6 +47,7 @@ class Server
     }
 
     void delegate(Message) onMessage;
+    void delegate(Client) onNewConnection;
 
 private:
 
@@ -67,7 +68,10 @@ private:
         if (set.isSet(listener))
         {
             auto source = listener.accept();
-            clients[source] = new Client(source);
+            auto newClient = new Client(source);
+            clients[source] = newClient;
+            if (onNewConnection)
+                onNewConnection(newClient);
         }
 
         foreach (client; clients.byKeyValue)
@@ -128,15 +132,18 @@ private:
 
     void parseFrames(Client client)
     {
-        foreach (f; client.range.byFrame())
+        auto range = client.range;
+        foreach (f; range.byFrame())
         {
             switch (f.header.opcode)
             {
             case Opcodes.Text:
-                onMessage(Message(client, Message.Type.Text, f.payload()));
+                if (onMessage)
+                    onMessage(Message(client, Message.Type.Text, f.payload()));
                 break;
             case Opcodes.Binary:
-                onMessage(Message(client, Message.Type.Binary, f.payload()));
+                if (onMessage)
+                    onMessage(Message(client, Message.Type.Binary, f.payload()));
                 break;
             case Opcodes.Ping:
                 auto r = new Frame(0);
@@ -170,8 +177,12 @@ private:
     {
         string[string] headers;
         string requestMethod;
-        foreach (line; client.range.byLine())
+        auto range = client.range;
+        foreach (line; range.byLine())
         {
+            if (range.recieved >= 8192)
+                throw new SocketException("Header too large");
+
             if (line == newLine)
                 break;
 

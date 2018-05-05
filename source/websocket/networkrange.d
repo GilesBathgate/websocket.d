@@ -48,6 +48,8 @@ import client;
             break;
         }
 
+        recieved += length;
+
         if (length < buffer.length)
             client.pending = false;
     }
@@ -55,5 +57,5 @@ import client;
     ubyte[] buffer;
     size_t length;
     Client client;
-
+    size_t recieved;
 }
