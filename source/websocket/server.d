@@ -207,14 +207,25 @@ private:
             enum Sec_WebSocket_Key = Headers.Sec_WebSocket_Key.toLower;
             if (auto k = Sec_WebSocket_Key in headers)
             {
-                string key = *k ~ GUID;
-                import std.digest.sha, std.base64;
-
-                return Base64.encode(sha1Of(key));
+                return createKey(*k);
             }
         }
 
         return null;
+    }
+
+    static string createKey(string key)
+    {
+        import std.digest.sha, std.base64;
+
+        return Base64.encode(sha1Of(key ~ GUID));
+    }
+
+    unittest
+    {
+        auto k = "dGhlIHNhbXBsZSBub25jZQ==";
+        auto r = "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=";
+        assert(createKey(k) == r);
     }
 
     bool websocketRequested(string[string] headers)
