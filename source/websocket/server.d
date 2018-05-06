@@ -33,14 +33,13 @@ class Server
     void start()
     {
         listener.listen(10);
-        auto handler = new Fiber(&handleClient);
         _running = true;
         while (_running)
         {
             _client = current();
             if (_client)
             {
-                handler.call();
+                _client.handler.call();
             }
             Thread.sleep(10.msecs);
         }
@@ -68,7 +67,7 @@ private:
         if (set.isSet(listener))
         {
             auto source = listener.accept();
-            auto newClient = new Client(source);
+            auto newClient = new Client(source, new Fiber(&handleClient));
             clients[source] = newClient;
             if (onNewConnection)
                 onNewConnection(newClient);
@@ -269,22 +268,26 @@ private:
 
 unittest
 {
-    static bool client()
+    static void client()
     {
         import std.process;
 
-        Thread.sleep(10.msecs);
         spawnProcess(["node", "test/websocketclient.js"]);
-
-        return true;
+        Thread.sleep(1.seconds);
+        spawnProcess(["node", "test/websocketclient.js"]);
     }
 
     static bool server()
     {
+        import std.stdio;
+
         auto sv = new Server(new InternetAddress("localhost", 4000));
-        bool running = true;
+        int clients;
+        sv.onNewConnection = (c) {
+            writeln("New Connection ", c.source.remoteAddress);
+            ++clients;
+        };
         sv.onMessage = (m) {
-            import std.stdio;
 
             writeln("Client: ", m.text);
             switch (m.text)
@@ -297,7 +300,9 @@ unittest
                 break;
             case "Yes afraid so":
                 m.client.sendText("Cherio then");
-                sv.shutdown();
+                m.client.closed = true;
+                if(clients > 1)
+                    sv.shutdown();
                 break;
             default:
                 assert(0);
@@ -308,6 +313,6 @@ unittest
         return true;
     }
 
-    assert(client());
+    new Thread(&client).start;
     assert(server());
 }

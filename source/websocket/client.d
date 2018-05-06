@@ -1,6 +1,7 @@
 module client;
 
 import std.socket;
+import core.thread;
 import networkrange;
 import frame;
 
@@ -10,9 +11,10 @@ class Client
 {
     import std.array;
 
-    this(Socket source)
+    this(Socket source, Fiber handler)
     {
         this.source = source;
+        this.handler = handler;
         range = NetworkRange(this);
         writeBuffer.reserve(8192);
     }
@@ -57,6 +59,7 @@ class Client
         source.send(f.data);
     }
 
+    Fiber handler;
     bool socketUpgraded;
     bool pending;
     bool closed;
