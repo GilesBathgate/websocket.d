@@ -234,9 +234,15 @@ private:
         enum Upgrade = Headers.Upgrade.toLower;
         if (auto c = Connection in headers)
             if (auto u = Upgrade in headers)
-                return *c == HeaderFields.Upgrade && *u == HeaderFields.WebSocket;
+                return compare(*c, HeaderFields.Upgrade)
+                    && compare(*u, HeaderFields.WebSocket);
 
         return false;
+    }
+
+    static bool compare(string a, string b)
+    {
+        return a.toLower == b.toLower;
     }
 
     enum Headers : string
