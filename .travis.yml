@@ -4,6 +4,7 @@ before_install:
     - sudo pip install autobahntestsuite
 
 script:
+    - wstest -m fuzzingclient
     - dub test -b unittest-cov
 
 after_success:
