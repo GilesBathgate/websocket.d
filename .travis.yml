@@ -1,7 +1,7 @@
 language: d
 
 before_install:
-    - sudo pip install --upgrade six
+    - sudo pip install --upgrade six zope.interface
     - sudo pip install autobahntestsuite
 
 script:
